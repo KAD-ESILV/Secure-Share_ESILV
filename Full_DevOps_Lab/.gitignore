@@ -1,0 +1,53 @@
+# Node.js dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Test snapshots and temp files
+*.test.js.snap
+*.swp
+*.bak
+*.tmp
+
+# ESLint cache
+.eslintcache
+
+# Optional: ignore compiled TypeScript (if using)
+*.tsbuildinfo
+
+# Optional: ignore GitHub workflows cache
+.github/workflows/*.cache
