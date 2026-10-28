@@ -1,11 +1,13 @@
 /**
  * Express app configuration.
  * Responsibilities:
+ *  - CORS (lets the React site on port 3000 call the API)
  *  - Base routes (/, /health)
  *  - Auto-mount all routers in src/routes/auto/*.route.js
  *  - Global error handler (consistent JSON for errors)
  */
 import express from 'express'
+import cors from 'cors'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +19,9 @@ const __dirname = path.dirname(__filename)
 const require = createRequire(import.meta.url)
 
 const app = express()
+
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }))
+app.use(express.json())
 
 // Simple root + health endpoints
 app.get('/', (_req, res) => res.json({ ok: true, message: 'Hello from CI/CD demo 👋' }))
