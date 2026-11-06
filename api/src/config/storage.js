@@ -5,6 +5,8 @@
 import {
   S3Client,
   PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand
 } from '@aws-sdk/client-s3'
@@ -38,4 +40,15 @@ export function putObject (key, body, contentType) {
     Body: body,
     ContentType: contentType
   }))
+}
+
+/** Reads one object from SeaweedFS and returns it as a Buffer. */
+export async function getObject (key) {
+  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  return Buffer.from(await result.Body.transformToByteArray())
+}
+
+/** Deletes one object from SeaweedFS. */
+export function deleteObject (key) {
+  return s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
 }
