@@ -123,6 +123,7 @@ describe('downloadFile', () => {
       enc_iv: enc.iv,
       enc_tag: enc.tag,
       content_sha256: sha256(original),
+      scan_status: 'clean',
       ...overrides
     }
   }

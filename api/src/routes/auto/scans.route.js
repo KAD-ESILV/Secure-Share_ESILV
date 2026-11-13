@@ -1,62 +1,76 @@
 import { Router } from 'express'
-import {
-  checkScanInput,
-  createScan,
-  getAllScans,
-  getScanById,
-  getQuarantine
-} from '../../services/scan.service.js'
+import { listScans, listQuarantine, getFileForScan } from '../../services/scan.repository.js'
+import { enqueueScan, getQueueSize } from '../../services/scan.queue.js'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const router = Router()
 
-router.post('/api/scans', (req, res) => {
-  const error = checkScanInput(req.body)
-
-  if (error) {
-    return res.status(error.code).json({
+function requireAdmin (req, res, next) {
+  if (req.user && req.user.role !== 'admin') {
+    return res.status(403).json({
       error: true,
-      message: error.message
+      message: 'Admin only'
     })
   }
 
-  let ownerId = 'demo-user'
+  next()
+}
 
-  if (req.user) {
-    ownerId = req.user.id
+router.get('/api/scans', requireAdmin, async (req, res, next) => {
+  try {
+    const scans = await listScans()
+
+    res.status(200).json({
+      scans,
+      waiting: getQueueSize()
+    })
+  } catch (err) {
+    next(err)
   }
-
-  const scan = createScan(ownerId, req.body)
-
-  res.status(201).json({
-    scan
-  })
 })
 
-router.get('/api/scans', (req, res) => {
-  res.status(200).json({
-    scans: getAllScans()
-  })
+router.get('/api/quarantine', requireAdmin, async (req, res, next) => {
+  try {
+    const files = await listQuarantine()
+
+    res.status(200).json({
+      files
+    })
+  } catch (err) {
+    next(err)
+  }
 })
 
-router.get('/api/scans/:id', (req, res) => {
-  const scan = getScanById(Number(req.params.id))
+router.post('/api/scans/:fileId', requireAdmin, async (req, res, next) => {
+  const fileId = req.params.fileId
 
-  if (!scan) {
-    return res.status(404).json({
+  if (!UUID.test(fileId)) {
+    return res.status(400).json({
       error: true,
-      message: 'Scan not found'
+      message: 'Invalid file id'
     })
   }
 
-  res.status(200).json({
-    scan
-  })
-})
+  try {
+    const file = await getFileForScan(fileId)
 
-router.get('/api/quarantine', (req, res) => {
-  res.status(200).json({
-    files: getQuarantine()
-  })
+    if (!file) {
+      return res.status(404).json({
+        error: true,
+        message: 'File not found'
+      })
+    }
+
+    enqueueScan(fileId)
+
+    res.status(202).json({
+      message: 'Scan queued',
+      fileId
+    })
+  } catch (err) {
+    next(err)
+  }
 })
 
 export default router

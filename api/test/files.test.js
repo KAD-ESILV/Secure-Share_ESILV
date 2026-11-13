@@ -17,6 +17,12 @@ import {
 } from '../src/services/file.service.js'
 import { errorHandler } from '../src/utils/errorHandler.js'
 
+vi.mock('../src/services/scan.queue.js', () => {
+  return {
+    enqueueScan: vi.fn()
+  }
+})
+
 vi.mock('../src/services/file.service.js', async (importOriginal) => {
   const original = await importOriginal()
   return {

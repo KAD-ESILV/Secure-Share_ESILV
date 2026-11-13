@@ -1,174 +1,151 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import express from 'express'
 import request from 'supertest'
-import app from '../src/app.js'
+import router from '../src/routes/auto/scans.route.js'
+import { listScans, listQuarantine, getFileForScan } from '../src/services/scan.repository.js'
+import { enqueueScan, getQueueSize } from '../src/services/scan.queue.js'
 
-function sendScan (body) {
-  return request(app).post('/api/scans').send(body)
+vi.mock('../src/services/scan.repository.js', () => {
+  return {
+    listScans: vi.fn(),
+    listQuarantine: vi.fn(),
+    getFileForScan: vi.fn()
+  }
+})
+
+vi.mock('../src/services/scan.queue.js', () => {
+  return {
+    enqueueScan: vi.fn(),
+    getQueueSize: vi.fn()
+  }
+})
+
+const FILE_ID = '3f2b8c1e-9d4a-4e7b-8f6c-2a1b3c4d5e6f'
+
+function buildApp (user) {
+  const app = express()
+  app.use(express.json())
+
+  if (user) {
+    app.use((req, res, next) => {
+      req.user = user
+      next()
+    })
+  }
+
+  app.use(router)
+  app.use((err, req, res, next) => {
+    res.status(500).json({
+      error: true,
+      message: err.message
+    })
+  })
+
+  return app
 }
 
 describe('Scans API', () => {
-  it('accepts a clean PDF', async () => {
-    const res = await sendScan({
-      fileName: 'rapport.pdf',
-      mimeType: 'application/pdf',
-      size: 2048
-    })
-
-    expect(res.status).toBe(201)
-    expect(typeof res.body.scan.id).toBe('number')
-    expect(res.body.scan.ownerId).toBe('demo-user')
-    expect(res.body.scan.status).toBe('clean')
-    expect(res.body.scan.quarantined).toBe(false)
+  beforeEach(() => {
+    vi.resetAllMocks()
   })
 
-  it('blocks a file hidden behind a double extension', async () => {
-    const res = await sendScan({
-      fileName: 'facture.pdf.exe',
-      mimeType: 'application/pdf',
-      size: 2048
-    })
+  it('lists every scan and the size of the queue', async () => {
+    const scan = {
+      id: 1,
+      status: 'clean'
+    }
+    listScans.mockResolvedValue([scan])
+    getQueueSize.mockReturnValue(3)
 
-    expect(res.status).toBe(201)
-    expect(res.body.scan.status).toBe('malicious')
-    expect(res.body.scan.quarantined).toBe(true)
-    expect(res.body.scan.reason).toContain('.exe')
-  })
-
-  it('detects dangerous extensions written in capitals', async () => {
-    const res = await sendScan({
-      fileName: 'VIRUS.EXE',
-      mimeType: 'application/octet-stream',
-      size: 100
-    })
-
-    expect(res.body.scan.status).toBe('malicious')
-  })
-
-  it('flags a file whose type does not match its extension', async () => {
-    const res = await sendScan({
-      fileName: 'photo.png',
-      mimeType: 'application/pdf',
-      size: 500
-    })
-
-    expect(res.body.scan.status).toBe('suspicious')
-    expect(res.body.scan.quarantined).toBe(true)
-  })
-
-  it('accepts files without extension', async () => {
-    const noDot = await sendScan({
-      fileName: 'Makefile',
-      mimeType: 'text/plain',
-      size: 10
-    })
-    const hidden = await sendScan({
-      fileName: '.env',
-      mimeType: 'text/plain',
-      size: 10
-    })
-
-    expect(noDot.body.scan.status).toBe('clean')
-    expect(hidden.body.scan.status).toBe('clean')
-  })
-
-  it('returns 400 when a field is missing', async () => {
-    const res = await sendScan({
-      fileName: 'rapport.pdf'
-    })
-
-    expect(res.status).toBe(400)
-    expect(res.body.error).toBe(true)
-  })
-
-  it('returns 400 when fileName is not text', async () => {
-    const res = await sendScan({
-      fileName: 123,
-      mimeType: 'application/pdf',
-      size: 10
-    })
-
-    expect(res.status).toBe(400)
-  })
-
-  it('returns 400 when size is not a positive number', async () => {
-    const negative = await sendScan({
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      size: -5
-    })
-    const text = await sendScan({
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      size: 'big'
-    })
-
-    expect(negative.status).toBe(400)
-    expect(text.status).toBe(400)
-  })
-
-  it('returns 413 when the file is bigger than 32 MB', async () => {
-    const res = await sendScan({
-      fileName: 'video.zip',
-      mimeType: 'application/zip',
-      size: 33 * 1024 * 1024
-    })
-
-    expect(res.status).toBe(413)
-  })
-
-  it('lists every scan', async () => {
-    const before = await request(app).get('/api/scans')
-
-    await sendScan({
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      size: 10
-    })
-    await sendScan({
-      fileName: 'b.exe',
-      mimeType: 'application/octet-stream',
-      size: 10
-    })
-
-    const after = await request(app).get('/api/scans')
-
-    expect(after.status).toBe(200)
-    expect(after.body.scans).toHaveLength(before.body.scans.length + 2)
-  })
-
-  it('returns one scan by id, or 404 if it does not exist', async () => {
-    const created = await sendScan({
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      size: 10
-    })
-    const id = created.body.scan.id
-
-    const found = await request(app).get('/api/scans/' + id)
-    const missing = await request(app).get('/api/scans/999999')
-
-    expect(found.status).toBe(200)
-    expect(found.body.scan.fileName).toBe('a.pdf')
-    expect(missing.status).toBe(404)
-  })
-
-  it('only shows dangerous files in quarantine', async () => {
-    const clean = await sendScan({
-      fileName: 'a.pdf',
-      mimeType: 'application/pdf',
-      size: 10
-    })
-    const dangerous = await sendScan({
-      fileName: 'b.exe',
-      mimeType: 'application/octet-stream',
-      size: 10
-    })
-
-    const res = await request(app).get('/api/quarantine')
-    const ids = res.body.files.map((file) => file.id)
+    const res = await request(buildApp()).get('/api/scans')
 
     expect(res.status).toBe(200)
-    expect(ids).toContain(dangerous.body.scan.id)
-    expect(ids).not.toContain(clean.body.scan.id)
+    expect(res.body.scans).toEqual([scan])
+    expect(res.body.waiting).toBe(3)
+  })
+
+  it('lists the files in quarantine', async () => {
+    const file = {
+      id: FILE_ID,
+      scan_status: 'malicious'
+    }
+    listQuarantine.mockResolvedValue([file])
+
+    const res = await request(buildApp()).get('/api/quarantine')
+
+    expect(res.status).toBe(200)
+    expect(res.body.files).toEqual([file])
+  })
+
+  it('refuses a file id that is not a UUID', async () => {
+    const res = await request(buildApp()).post('/api/scans/123')
+
+    expect(res.status).toBe(400)
+    expect(getFileForScan).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 when the file does not exist', async () => {
+    getFileForScan.mockResolvedValue(undefined)
+
+    const res = await request(buildApp()).post('/api/scans/' + FILE_ID)
+
+    expect(res.status).toBe(404)
+    expect(enqueueScan).not.toHaveBeenCalled()
+  })
+
+  it('queues a new scan for an existing file', async () => {
+    const file = {
+      id: FILE_ID
+    }
+    getFileForScan.mockResolvedValue(file)
+
+    const res = await request(buildApp()).post('/api/scans/' + FILE_ID)
+
+    expect(res.status).toBe(202)
+    expect(res.body.fileId).toBe(FILE_ID)
+    expect(enqueueScan).toHaveBeenCalledWith(FILE_ID)
+  })
+
+  it('blocks users who are not admin', async () => {
+    const user = {
+      id: 'u1',
+      role: 'user'
+    }
+    const app = buildApp(user)
+
+    const scans = await request(app).get('/api/scans')
+    const quarantine = await request(app).get('/api/quarantine')
+    const rescan = await request(app).post('/api/scans/' + FILE_ID)
+
+    expect(scans.status).toBe(403)
+    expect(quarantine.status).toBe(403)
+    expect(rescan.status).toBe(403)
+  })
+
+  it('lets an admin in', async () => {
+    const admin = {
+      id: 'a1',
+      role: 'admin'
+    }
+    listQuarantine.mockResolvedValue([])
+
+    const res = await request(buildApp(admin)).get('/api/quarantine')
+
+    expect(res.status).toBe(200)
+  })
+
+  it('passes database errors to the error handler', async () => {
+    listScans.mockRejectedValue(new Error('database down'))
+    listQuarantine.mockRejectedValue(new Error('database down'))
+    getFileForScan.mockRejectedValue(new Error('database down'))
+    const app = buildApp()
+
+    const scans = await request(app).get('/api/scans')
+    const quarantine = await request(app).get('/api/quarantine')
+    const rescan = await request(app).post('/api/scans/' + FILE_ID)
+
+    expect(scans.status).toBe(500)
+    expect(quarantine.status).toBe(500)
+    expect(rescan.status).toBe(500)
   })
 })
