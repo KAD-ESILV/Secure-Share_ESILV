@@ -27,6 +27,15 @@ export class IntegrityError extends Error {
   }
 }
 
+/** Thrown when a file has not been declared clean by the virus scan (axis 3). */
+export class QuarantineError extends Error {
+  constructor (scanStatus) {
+    super(`File not available (scan status: ${scanStatus})`)
+    this.name = 'QuarantineError'
+    this.status = 403
+  }
+}
+
 /** Checks a new file name. Returns an error message, or null if it is valid. */
 export function validateFileName (name) {
   if (typeof name !== 'string' || name.trim() === '') {
@@ -93,12 +102,17 @@ export async function getFile (ownerId, id) {
  */
 export async function downloadFile (ownerId, id) {
   const { rows } = await query(
-    `SELECT original_name, mime_type, storage_key, enc_key, enc_iv, enc_tag, content_sha256
+    `SELECT original_name, mime_type, storage_key, enc_key, enc_iv, enc_tag, content_sha256, scan_status
      FROM files WHERE id = $1 AND owner_id = $2`,
     [id, ownerId]
   )
   const row = rows[0]
   if (!row) return null
+
+  // Axis 3: only files declared clean by the scan can leave the platform
+  if (row.scan_status !== 'clean') {
+    throw new QuarantineError(row.scan_status)
+  }
 
   const body = await getObject(row.storage_key)
 
