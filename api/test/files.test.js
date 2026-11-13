@@ -10,6 +10,12 @@ import router, { getOwnerId } from '../src/routes/auto/files.route.js'
 import { saveFile, listFiles } from '../src/services/file.service.js'
 import { errorHandler } from '../src/utils/errorHandler.js'
 
+vi.mock('../src/services/scan.queue.js', () => {
+  return {
+    enqueueScan: vi.fn()
+  }
+})
+
 vi.mock('../src/services/file.service.js', () => ({
   MAX_FILE_SIZE: 32 * 1024 * 1024,
   MAX_FILES: 10,

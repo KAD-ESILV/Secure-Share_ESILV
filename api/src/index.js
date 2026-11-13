@@ -9,6 +9,8 @@ import app from './app.js'
 import { initDb } from './db/init.js'
 import { ensureBucket } from './config/storage.js'
 import { getMasterKey } from './utils/crypto.js'
+import { initScansTable } from './services/scan.repository.js'
+import { resumePendingScans } from './services/scan.queue.js'
 
 const PORT = process.env.PORT || 3000
 
@@ -24,8 +26,12 @@ async function initWithRetry (retries = 15) {
   for (let i = 1; i <= retries; i++) {
     try {
       await initDb()
+      await initScansTable()
       await ensureBucket()
       console.log('[init] database and storage ready')
+
+      const pending = await resumePendingScans()
+      console.log('[scan] ' + pending + ' pending file(s) queued')
       return
     } catch (err) {
       console.log(`[init] attempt ${i}/${retries} failed: ${err.message}`)

@@ -6,6 +6,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { saveFile, listFiles, MAX_FILE_SIZE, MAX_FILES } from '../../services/file.service.js'
+import { enqueueScan } from '../../services/scan.queue.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -40,7 +41,9 @@ router.post('/api/files', (req, res, next) => {
       const ownerId = getOwnerId(req)
       const saved = []
       for (const file of req.files) {
-        saved.push(await saveFile(ownerId, file))
+        const savedFile = await saveFile(ownerId, file)
+        saved.push(savedFile)
+        enqueueScan(savedFile.id)
       }
       res.status(201).json({ files: saved })
     } catch (e) {
