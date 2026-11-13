@@ -1,4 +1,4 @@
-// SecureShare - My files page (SCRUM-12: upload)
+// SecureShare - My files page (upload, download, rename, delete)
 import { useEffect, useState } from 'react'
 import './App.css'
 
@@ -17,6 +17,15 @@ function formatSize (bytes) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function readError (res) {
+  try {
+    const data = await res.json()
+    return data.message || `Error ${res.status}`
+  } catch {
+    return `Error ${res.status}`
+  }
 }
 
 export default function App () {
@@ -67,8 +76,8 @@ export default function App () {
     setUploading(true)
     try {
       const res = await fetch(`${API_URL}/api/files`, { method: 'POST', body: form })
+      if (!res.ok) throw new Error(await readError(res))
       const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Upload failed')
       setMessage({ type: 'success', text: `${data.files.length} file(s) uploaded.` })
       setSelected([])
       event.target.reset()
@@ -77,6 +86,51 @@ export default function App () {
       setMessage({ type: 'error', text: err.message })
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleDownload (file) {
+    try {
+      const res = await fetch(`${API_URL}/api/files/${file.id}/download`)
+      if (!res.ok) throw new Error(await readError(res))
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = file.original_name
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    }
+  }
+
+  async function handleRename (file) {
+    const name = window.prompt('New name:', file.original_name)
+    if (!name || name === file.original_name) return
+    try {
+      const res = await fetch(`${API_URL}/api/files/${file.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      if (!res.ok) throw new Error(await readError(res))
+      setMessage({ type: 'success', text: `Renamed to "${name}".` })
+      await loadFiles()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    }
+  }
+
+  async function handleDelete (file) {
+    if (!window.confirm(`Delete "${file.original_name}"? This cannot be undone.`)) return
+    try {
+      const res = await fetch(`${API_URL}/api/files/${file.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(await readError(res))
+      setMessage({ type: 'success', text: `"${file.original_name}" deleted.` })
+      await loadFiles()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
     }
   }
 
@@ -100,7 +154,7 @@ export default function App () {
         : (
           <table className="files">
             <thead>
-              <tr><th>Name</th><th>Size</th><th>Status</th><th>Uploaded</th></tr>
+              <tr><th>Name</th><th>Size</th><th>Status</th><th>Uploaded</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {files.map(f => (
@@ -109,6 +163,11 @@ export default function App () {
                   <td>{formatSize(f.size_bytes)}</td>
                   <td><span className={`status ${f.scan_status}`}>{STATUS_LABELS[f.scan_status] || f.scan_status}</span></td>
                   <td>{new Date(f.created_at).toLocaleString()}</td>
+                  <td className="actions">
+                    <button type="button" onClick={() => handleDownload(f)}>Download</button>
+                    <button type="button" onClick={() => handleRename(f)}>Rename</button>
+                    <button type="button" className="danger" onClick={() => handleDelete(f)}>Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
