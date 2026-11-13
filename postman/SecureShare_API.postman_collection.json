@@ -335,6 +335,326 @@
         },
         "description": ""
       }
+    },
+    {
+      "name": "Axis 3 - Threat Detection",
+      "description": "Self-contained: the first request uploads its own test file and sets {{scanFileId}}. Run the folder in order.",
+      "item": [
+        {
+          "name": "Upload a disguised program",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"The file waits for its scan\", function () {",
+                  "  const files = pm.response.json().files;",
+                  "  pm.expect(files[0].scan_status).to.eql(\"pending\");",
+                  "  pm.collectionVariables.set(\"scanFileId\", files[0].id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "files"
+              ]
+            },
+            "description": "Before running: in Body > form-data, choose a copy of C:\\Windows\\System32\\notepad.exe renamed to rapport.pdf for the key 'files'.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Download of a blocked file is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test(\"The message gives the scan status\", function () {",
+                  "  pm.expect(pm.response.json().message).to.include(\"scan status\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/files/{{scanFileId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "files",
+                "{{scanFileId}}",
+                "download"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Quarantine contains the program",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The scan runs in the background: give it 2 seconds",
+                  "setTimeout(function () {}, 2000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"The disguised program is in quarantine\", function () {",
+                  "  const ids = pm.response.json().files.map(function (file) {",
+                  "    return file.id;",
+                  "  });",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get(\"scanFileId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/quarantine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "quarantine"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Scan history",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Returns the scans and the queue size\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.scans).to.be.an(\"array\");",
+                  "  pm.expect(body.waiting).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"The program was caught by the real type check\", function () {",
+                  "  const id = pm.collectionVariables.get(\"scanFileId\");",
+                  "  const scan = pm.response.json().scans.find(function (s) {",
+                  "    return s.file_id === id;",
+                  "  });",
+                  "  pm.expect(scan.status).to.eql(\"malicious\");",
+                  "  pm.expect(scan.source).to.eql(\"file-type\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/scans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scans"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Scan a file again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 202\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test(\"Returns the queued file id\", function () {",
+                  "  pm.expect(pm.response.json().fileId).to.eql(pm.collectionVariables.get(\"scanFileId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/scans/{{scanFileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scans",
+                "{{scanFileId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Scan with an invalid id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/scans/123",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scans",
+                "123"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Scan a file that does not exist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/scans/00000000-0000-4000-8000-000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scans",
+                "00000000-0000-4000-8000-000000000000"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Clean up the test file",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The scan runs in the background: give it 2 seconds",
+                  "setTimeout(function () {}, 2000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/files/{{scanFileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "files",
+                "{{scanFileId}}"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -344,6 +664,10 @@
     },
     {
       "key": "fileId",
+      "value": ""
+    },
+    {
+      "key": "scanFileId",
       "value": ""
     }
   ]
